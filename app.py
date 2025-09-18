@@ -4,13 +4,25 @@ import pandas as pd
 import streamlit as st
 
 st.set_page_config(page_title="Employee Attrition Predictor", layout="centered")
-st.title("Employee Attrition Predictor (Pipeline-safe)")
+st.title("Employee Attrition Predictor")
 
-# ---------------------------------------------------------------------
-# Load artifacts
-# ---------------------------------------------------------------------
 PIPE_PATH = "models/attrition_pipeline.joblib"
 DEFAULTS_PATH = "models/defaults_row.csv"
+
+def load_pipeline_with_shims(path):
+    try:
+        return joblib.load(path)
+    except AttributeError as e:
+        # Known sklearn internal rename between versions: _RemainderColsList
+        try:
+            from sklearn.compose import _column_transformer
+            if not hasattr(_column_transformer, "_RemainderColsList"):
+                class _RemainderColsList(list):
+                    pass
+                _column_transformer._RemainderColsList = _RemainderColsList
+            return joblib.load(path)
+        except Exception as e2:
+            raise e2
 
 if not os.path.exists(PIPE_PATH):
     st.error("Missing models/attrition_pipeline.joblib. Upload the pipeline file from Colab.")
@@ -20,15 +32,11 @@ if not os.path.exists(DEFAULTS_PATH):
     st.error("Missing models/defaults_row.csv. Upload the defaults row saved from Colab.")
     st.stop()
 
-pipe = joblib.load(PIPE_PATH)
+# Try load with shim fallback
+pipe = load_pipeline_with_shims(PIPE_PATH)
+
 defaults = pd.read_csv(DEFAULTS_PATH, dtype="object").iloc[0].to_dict()
 
-# Ensure numeric defaults are numeric
-def _safe_float(x, fallback=None):
-    try:
-        return float(x)
-    except Exception:
-        return fallback
 
 # ---------------------------------------------------------------------
 # Minimal inputs (you can expand these later). We will start from defaults,
